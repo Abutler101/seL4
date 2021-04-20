@@ -76,6 +76,11 @@ struct vcpu {
     word_t regs[seL4_VCPUReg_Num];
     bool_t vppi_masked[n_VPPIEventIRQ];
 #ifdef CONFIG_VTIMER_UPDATE_VOFFSET
+    /* vTimer is 8-bytes wide and has same alignment requirement.
+     * To keep the struct packed on 32-bit platforms when accompanied by an
+     * odd number of 32-bit words, we need to add a padding word.
+     * */
+    word_t vcpu_padding;
     struct vTimer virtTimer;
 #endif
 };
@@ -104,7 +109,6 @@ exception_t decodeARMVCPUInvocation(
     cptr_t cptr,
     cte_t *slot,
     cap_t cap,
-    extra_caps_t extraCaps,
     bool_t call,
     word_t *buffer
 );
@@ -118,7 +122,7 @@ void handleVCPUInjectInterruptIPI(vcpu_t *vcpu, unsigned long index, virq_t virq
 exception_t decodeVCPUWriteReg(cap_t cap, unsigned int length, word_t *buffer);
 exception_t decodeVCPUReadReg(cap_t cap, unsigned int length, bool_t call, word_t *buffer);
 exception_t decodeVCPUInjectIRQ(cap_t cap, unsigned int length, word_t *buffer);
-exception_t decodeVCPUSetTCB(cap_t cap, extra_caps_t extraCaps);
+exception_t decodeVCPUSetTCB(cap_t cap);
 exception_t decodeVCPUAckVPPI(cap_t cap, unsigned int length, word_t *buffer);
 
 exception_t invokeVCPUWriteReg(vcpu_t *vcpu, word_t field, word_t value);

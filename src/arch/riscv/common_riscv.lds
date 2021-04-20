@@ -10,24 +10,29 @@ ENTRY(_start)
 
 #include <config.h>
 #define __ASSEMBLER__
-#include <mode/hardware.h>
+#include <hardware.h>
 #include <sel4/plat/api/constants.h>
 #include <plat/machine/devices_gen.h>
 
-KERNEL_OFFSET = KERNEL_ELF_BASE - PADDR_LOAD;
+KERNEL_OFFSET = KERNEL_ELF_BASE - KERNEL_ELF_PADDR_BASE;
 
 SECTIONS
 {
     . = KERNEL_ELF_BASE;
 
-    .boot . : AT(ADDR(.boot) - KERNEL_OFFSET)
+    .boot.text . : AT(ADDR(.boot.text) - KERNEL_OFFSET)
     {
         *(.boot.text)
-        *(.boot.rodata)
-        *(.boot.data)
-        . = ALIGN(64K);
     }
-
+    .boot.rodata . : AT(ADDR(.boot.rodata) - KERNEL_OFFSET)
+    {
+        *(.boot.rodata)
+    }
+    .boot.data . : AT(ADDR(.boot.data) - KERNEL_OFFSET)
+    {
+        *(.boot.data)
+    }
+    . = ALIGN(4K);
 
     ki_boot_end = .;
 

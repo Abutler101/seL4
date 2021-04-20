@@ -245,7 +245,6 @@ exception_t decodeIA32PageDirectoryInvocation(
     word_t length,
     cte_t *cte,
     cap_t cap,
-    extra_caps_t excaps,
     word_t *buffer
 )
 {
@@ -266,7 +265,7 @@ exception_t decodeIA32PageDirectoryInvocation(
 
         vaddr = getSyscallArg(0, buffer);
 
-        if (vaddr > PPTR_USER_TOP) {
+        if (vaddr > USER_TOP) {
             userError("X86PageDirectoryGetStatusBits: address inside kernel window");
             current_syscall_error.type = seL4_InvalidArgument;
             current_syscall_error.invalidArgumentNumber = 0;

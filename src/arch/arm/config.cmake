@@ -12,15 +12,26 @@ endif()
 
 set(KernelArmPASizeBits40 OFF)
 set(KernelArmPASizeBits44 OFF)
-if(KernelArmCortexA53)
+if(KernelArmCortexA35)
+    set(KernelArmICacheVIPT ON)
+    set(KernelArmPASizeBits40 ON)
+    math(EXPR KernelPaddrUserTop "(1 << 40) - 1")
+elseif(KernelArmCortexA53)
+    set(KernelArmICacheVIPT ON)
     set(KernelArmPASizeBits40 ON)
     math(EXPR KernelPaddrUserTop "(1 << 40) - 1")
 elseif(KernelArmCortexA57)
     set(KernelArmPASizeBits44 ON)
     math(EXPR KernelPaddrUserTop "(1 << 44) - 1")
+elseif(KernelArmCortexA72)
+    # For Cortex-A72 in AArch64 state, the physical address range is 44 bits
+    # (https://developer.arm.com/documentation/100095/0001/memory-management-unit/about-the-mmu)
+    set(KernelArmPASizeBits44 ON)
+    math(EXPR KernelPaddrUserTop "(1 << 44) - 1")
 endif()
 config_set(KernelArmPASizeBits40 ARM_PA_SIZE_BITS_40 "${KernelArmPASizeBits40}")
 config_set(KernelArmPASizeBits44 ARM_PA_SIZE_BITS_44 "${KernelArmPASizeBits44}")
+config_set(KernelArmICacheVIPT ARM_ICACHE_VIPT "${KernelArmICacheVIPT}")
 
 if(KernelSel4ArchAarch32)
     # 64-bit targets may be building in 32-bit mode,
@@ -77,7 +88,8 @@ config_option(
     KernelArmHypervisorSupport ARM_HYPERVISOR_SUPPORT
     "Build as Hypervisor. Utilise ARM virtualisation extensions to build the kernel as a hypervisor"
     DEFAULT ${default_hyp_support}
-    DEPENDS "KernelArmCortexA15 OR KernelArmCortexA57 OR KernelArmCortexA53"
+    DEPENDS
+        "KernelArmCortexA15 OR KernelArmCortexA35 OR KernelArmCortexA57 OR KernelArmCortexA53 OR KernelArmCortexA72"
 )
 
 config_option(
@@ -113,8 +125,10 @@ config_option(
     DEFAULT_DISABLED OFF
 )
 
+config_option(KernelArmSMMU ARM_SMMU "Enable SystemMMU" DEFAULT OFF DEPENDS "KernelPlatformTx2")
+
 config_option(
-    KernelArmSMMU ARM_SMMU "Enable SystemMMU for the Tegra TK1 SoC"
+    KernelTk1SMMU TK1_SMMU "Enable SystemMMU for the Tegra TK1 SoC"
     DEFAULT OFF
     DEPENDS "KernelPlatformTK1"
 )
@@ -145,13 +159,13 @@ config_option(
     DEFAULT OFF
     DEPENDS "KernelArchArmV7a OR KernelArchArmV8a;KernelArmHypervisorSupport"
 )
-config_option(KernelARMSMMUInterruptEnable SMMU_INTERRUPT_ENABLE "Enable SMMU interrupts. \
+config_option(KernelTk1SMMUInterruptEnable SMMU_INTERRUPT_ENABLE "Enable SMMU interrupts. \
     SMMU interrupts currently only serve a debug purpose as \
     they are not forwarded to user level. Enabling this will \
     cause some fault types to print out a message in the kernel. \
     WARNING: Printing fault information is slow and rapid faults \
     can result in all time spent in the kernel printing fault \
-    messages" DEFAULT "${KernelDebugBuild}" DEPENDS "KernelArmSMMU" DEFAULT_DISABLED OFF)
+    messages" DEFAULT "${KernelDebugBuild}" DEPENDS "KernelTk1SMMU" DEFAULT_DISABLED OFF)
 
 config_option(
     KernelAArch32FPUEnableContextSwitch AARCH32_FPU_ENABLE_CONTEXT_SWITCH
@@ -177,9 +191,14 @@ if(
     KernelArmCortexA7
     OR KernelArmCortexA8
     OR KernelArmCortexA15
+    OR KernelArmCortexA35
     OR KernelArmCortexA53
     OR KernelArmCortexA57
+    OR KernelArmCortexA72
 )
+    # According to https://developer.arm.com/documentation/100095/0001/functional-description/about-the-cortex-a72-processor-functions/components-of-the-processor
+    # the L1 instruction on the Cortex-A72 cache has a 64-byte cache line.
+    # Thus, 6 bits are needed.
     config_set(KernelArmCacheLineSizeBits L1_CACHE_LINE_SIZE_BITS "6")
 elseif(KernelArmCortexA9 OR KernelArm1136JF_S)
     config_set(KernelArmCacheLineSizeBits L1_CACHE_LINE_SIZE_BITS "5")
@@ -192,14 +211,6 @@ if(KernelArchArmV6)
     #
     # See SELFOUR-2253
     set(KernelSetTLSBaseSelf ON)
-endif()
-
-# TODO: this config has no business being in the build system, and should
-# be moved to C headers, but for now must be emulated here for compatibility
-if(KernelBenchmarksTrackUtilisation AND KernelArchARM)
-    config_set(KernelArmEnablePMUOverflowInterrupt ARM_ENABLE_PMU_OVERFLOW_INTERRUPT ON)
-else()
-    config_set(KernelArmEnablePMUOverflowInterrupt ARM_ENABLE_PMU_OVERFLOW_INTERRUPT OFF)
 endif()
 
 # Provides a 4K region of read-only memory mapped into every vspace to
@@ -224,6 +235,7 @@ add_sources(
         object/tcb.c
         object/iospace.c
         object/vcpu.c
+        object/smmu.c
         smp/ipi.c
 )
 

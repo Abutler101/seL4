@@ -33,11 +33,25 @@
  * at least this much budget - see comment on refill_sufficient */
 #define MIN_BUDGET_US (2u * getKernelWcetUs() * CONFIG_KERNEL_WCET_SCALE)
 #define MIN_BUDGET    (2u * getKernelWcetTicks() * CONFIG_KERNEL_WCET_SCALE)
+#if (CONFIG_KERNEL_STATIC_MAX_BUDGET_US) != 0
+#define MAX_BUDGET_US (CONFIG_KERNEL_STATIC_MAX_BUDGET_US)
+#else
+#define MAX_BUDGET_US getMaxUsToTicks()
+#endif /* CONFIG_KERNEL_STATIC_MAX_BUDGET_US != 0 */
 
 /* Short hand for accessing refill queue items */
-#define REFILL_INDEX(sc, index) (((refill_t *) (SC_REF(sc) + sizeof(sched_context_t)))[index])
-#define REFILL_HEAD(sc) REFILL_INDEX((sc), (sc)->scRefillHead)
-#define REFILL_TAIL(sc) REFILL_INDEX((sc), (sc)->scRefillTail)
+static inline refill_t *refill_index(sched_context_t *sc, word_t index)
+{
+    return ((refill_t *)(SC_REF(sc) + sizeof(sched_context_t))) + index;
+}
+static inline refill_t *refill_head(sched_context_t *sc)
+{
+    return refill_index(sc, sc->scRefillHead);
+}
+static inline refill_t *refill_tail(sched_context_t *sc)
+{
+    return refill_index(sc, sc->scRefillTail);
+}
 
 
 /* Scheduling context objects consist of a sched_context_t at the start, followed by a
@@ -78,11 +92,11 @@ static inline bool_t refill_single(sched_context_t *sc)
  * has available if usage is charged to it. */
 static inline ticks_t refill_capacity(sched_context_t *sc, ticks_t usage)
 {
-    if (unlikely(usage > REFILL_HEAD(sc).rAmount)) {
+    if (unlikely(usage > refill_head(sc)->rAmount)) {
         return 0;
     }
 
-    return REFILL_HEAD(sc).rAmount - usage;
+    return refill_head(sc)->rAmount - usage;
 }
 
 /*
@@ -102,11 +116,61 @@ static inline bool_t refill_sufficient(sched_context_t *sc, ticks_t usage)
  */
 static inline bool_t refill_ready(sched_context_t *sc)
 {
-    return REFILL_HEAD(sc).rTime <= (NODE_STATE(ksCurTime) + getKernelWcetTicks());
+    return refill_head(sc)->rTime <= (NODE_STATE_ON_CORE(ksCurTime, sc->scCore) + getKernelWcetTicks());
+}
+
+/*
+ * Return true if an SC has been successfully configured with parameters
+ * that allow for a thread to run.
+ */
+static inline bool_t sc_active(sched_context_t *sc)
+{
+    return sc->scRefillMax > 0;
+}
+
+/*
+ * Return true if a SC has been 'released', if its head refill is
+ * sufficient and is in the past.
+ */
+static inline bool_t sc_released(sched_context_t *sc)
+{
+    if (sc_active(sc)) {
+        /* All refills must all be greater than MIN_BUDGET so this
+         * should be true for all active SCs */
+        assert(refill_sufficient(sc, 0));
+        return refill_ready(sc);
+    } else {
+        return false;
+    }
+}
+
+/*
+ * Return true if a SC's available refills should be delayed at the
+ * point the associated thread becomes runnable (sporadic server).
+ */
+static inline bool_t sc_sporadic(sched_context_t *sc)
+{
+    return sc != NULL && sc->scSporadic;
+}
+
+/*
+ * Return true if a SC's available refills should be delayed at the
+ * point the associated thread becomes the current thread (constant
+ * bandwidth).
+ */
+static inline bool_t sc_constant_bandwidth(sched_context_t *sc)
+{
+    return !sc->scSporadic;
 }
 
 /* Create a new refill in a non-active sc */
+#ifdef ENABLE_SMP_SUPPORT
+void refill_new(sched_context_t *sc, word_t max_refills, ticks_t budget, ticks_t period, word_t core);
+#define REFILL_NEW(sc, max_refills, budget, period, core) refill_new(sc, max_refills, budget, period, core)
+#else
 void refill_new(sched_context_t *sc, word_t max_refills, ticks_t budget, ticks_t period);
+#define REFILL_NEW(sc, max_refills, budget, period, core) refill_new(sc, max_refills, budget, period)
+#endif
 
 /* Update refills in an active sc without violating bandwidth constraints */
 void refill_update(sched_context_t *sc, ticks_t new_period, ticks_t new_budget, word_t new_max_refills);
@@ -117,10 +181,8 @@ void refill_update(sched_context_t *sc, ticks_t new_period, ticks_t new_budget, 
  * the head refill, resulting in refill_sufficient failing.
  *
  * @param usage the amount of time to charge.
- * @param capacity the value returned by refill_capacity. At most call sites this
- * has already been calculated so pass the value in rather than calculating it again.
  */
-void refill_budget_check(ticks_t used, ticks_t capacity);
+void refill_budget_check(ticks_t used);
 
 /*
  * Charge a the current scheduling context `used` amount from its

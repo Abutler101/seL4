@@ -13,6 +13,7 @@
 #include <arch/machine/hardware.h>
 #include <arch/model/statedata.h>
 #include <arch/sbi.h>
+#include <mode/machine.h>
 
 #ifdef ENABLE_SMP_SUPPORT
 
@@ -124,10 +125,10 @@ static inline void write_stvec(word_t value)
     asm volatile("csrw stvec, %0" :: "rK"(value));
 }
 
-static inline word_t read_sbadaddr(void)
+static inline word_t read_stval(void)
 {
     word_t temp;
-    asm volatile("csrr %0, sbadaddr" : "=r"(temp));
+    asm volatile("csrr %0, stval" : "=r"(temp));
     return temp;
 }
 
@@ -152,8 +153,6 @@ static inline word_t read_sstatus(void)
     return temp;
 }
 
-/** MODIFIES: */
-/** DONT_TRANSLATE */
 static inline word_t read_sip(void)
 {
     word_t temp;
@@ -172,6 +171,20 @@ static inline void clear_sie_mask(word_t mask_low)
     word_t temp;
     asm volatile("csrrc %0, sie, %1" : "=r"(temp) : "rK"(mask_low));
 }
+
+#ifdef CONFIG_HAVE_FPU
+static inline uint32_t read_fcsr(void)
+{
+    uint32_t fcsr;
+    asm volatile("csrr %0, fcsr" : "=r"(fcsr));
+    return fcsr;
+}
+
+static inline void write_fcsr(uint32_t value)
+{
+    asm volatile("csrw fcsr, %0" :: "rK"(value));
+}
+#endif
 
 #if CONFIG_PT_LEVELS == 2
 #define SATP_MODE SATP_MODE_SV32
@@ -237,15 +250,15 @@ void plat_cleanInvalidateL2Range(paddr_t start, paddr_t end);
 
 static inline void *CONST paddr_to_kpptr(paddr_t paddr)
 {
-    assert(paddr < PADDR_HIGH_TOP);
-    assert(paddr >= PADDR_LOAD);
-    return (void *)(paddr + KERNEL_BASE_OFFSET);
+    assert(paddr < KERNEL_ELF_PADDR_TOP);
+    assert(paddr >= KERNEL_ELF_PADDR_BASE);
+    return (void *)(paddr + KERNEL_ELF_BASE_OFFSET);
 }
 
 static inline paddr_t CONST kpptr_to_paddr(void *pptr)
 {
-    assert((word_t)pptr >= KERNEL_BASE);
-    return (paddr_t)pptr - KERNEL_BASE_OFFSET;
+    assert((word_t)pptr >= KERNEL_ELF_BASE);
+    return (paddr_t)pptr - KERNEL_ELF_BASE_OFFSET;
 }
 
 /* Update the value of the actual regsiter to hold the expected value */

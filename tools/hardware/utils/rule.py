@@ -168,14 +168,14 @@ class DeviceRule:
             kernel_name = rule['kernel']
             user = rule.get('user', False)
             macro = rule.get('macro', None)
-            max_size = 1 << self.config.get_page_bits()
+            max_size = 1 << self.config.get_device_page_bits()
             if 'kernel_size' in rule:
                 max_size = rule['kernel_size']
             elif max_size < reg.size:
                 logging.warning(
                     "Only mapping {}/{} bytes from node {}, region {}. Set kernel_size in YAML to silence.".format(max_size, reg.size, node.path, i))
             ret.append(KernelRegionGroup(reg, kernel_name,
-                                         self.config.get_page_bits(), max_size, macro, user))
+                                         self.config.get_device_page_bits(), max_size, macro, user))
 
         return ret
 
@@ -233,7 +233,7 @@ class HardwareYaml:
                 return self.rules[compat]
 
         raise ValueError('Failed to match compatibles "{}" for node {}!'.format(
-            ', '.join(device.get_prop('compatible').strings, device.path)))
+            ', '.join(device.get_prop('compatible').strings), device.path))
 
     def get_matched_compatible(self, device: WrappedNode) -> str:
         ''' Returns the best matching compatible string for this device '''

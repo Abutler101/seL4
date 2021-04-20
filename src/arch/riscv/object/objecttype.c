@@ -294,17 +294,18 @@ exception_t Arch_decodeInvocation(
     cptr_t cptr,
     cte_t *slot,
     cap_t cap,
-    extra_caps_t extraCaps,
     bool_t call,
     word_t *buffer
 )
 {
-    return decodeRISCVMMUInvocation(label, length, cptr, slot, cap, extraCaps, buffer);
+    return decodeRISCVMMUInvocation(label, length, cptr, slot, cap, buffer);
 }
 
 void Arch_prepareThreadDelete(tcb_t *thread)
 {
-    /* No action required on RISCV. */
+#ifdef CONFIG_HAVE_FPU
+    fpuThreadDelete(thread);
+#endif
 }
 
 bool_t Arch_isFrameType(word_t type)

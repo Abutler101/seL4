@@ -15,13 +15,16 @@
 #include <api/types.h>
 #include <smp/lock.h>
 #include <arch/machine/hardware.h>
+#include <machine/fpu.h>
 
 void slowpath(syscall_t syscall)
 NORETURN;
 
+static inline
 void fastpath_call(word_t cptr, word_t r_msgInfo)
 NORETURN;
 
+static inline
 #ifdef CONFIG_KERNEL_MCS
 void fastpath_reply_recv(word_t cptr, word_t r_msgInfo, word_t reply)
 #else
@@ -103,6 +106,11 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
 #endif
 
     c_exit_hook();
+
+#ifdef CONFIG_HAVE_FPU
+    lazyFPURestore(NODE_STATE(ksCurThread));
+    set_tcb_fs_state(NODE_STATE(ksCurThread), isFpuEnable());
+#endif
 
     register word_t badge_reg asm("a0") = badge;
     register word_t msgInfo_reg asm("a1") = msgInfo;
